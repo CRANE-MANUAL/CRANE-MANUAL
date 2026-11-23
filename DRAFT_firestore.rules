@@ -1,0 +1,714 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'quvoaicode@gmail.com';
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isUserSuspensionActive(u) {
+      return u.status == 'suspended' && (
+        !('suspensionIndefinite' in u) ||
+        u.suspensionIndefinite == true ||
+        u.suspendedUntil > request.time
+      );
+    }
+
+    function isFeatureAllowed(feature) {
+      return isVerifiedUser() && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        !isUserSuspensionActive(getUserDoc()) ||
+        ('suspensionScope' in getUserDoc() &&
+         getUserDoc().suspensionScope == 'partial' &&
+         'suspendedFeatures' in getUserDoc() &&
+         !(feature in getUserDoc().suspendedFeatures))
+      );
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserDoc().role == 'admin' &&
+        !isUserSuspensionActive(getUserDoc())
+      );
+    }
+
+    function isValidOptionalUrl(url) {
+      return url is string && url.size() <= 1000 && (url == '' || url.matches('^https?://.*'));
+    }
+
+    function isValidRequiredHttpUrl(url) {
+      return url is string && url.size() >= 8 && url.size() <= 1000 && url.matches('^https?://.*');
+    }
+
+    function isValidImageAssetUrl(url) {
+      return url is string && url.size() >= 1 && url.size() <= 1000 && (
+        url.matches('^https?://.*') ||
+        (isAdmin() && url.matches('^/src/assets/images/.*'))
+      );
+    }
+
+    function isValidCoverImageUrl(url) {
+      return url is string && url.size() <= 1000 && (
+        url == '' ||
+        url.matches('^https?://.*') ||
+        (isAdmin() && url.matches('^/src/assets/images/.*'))
+      );
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'userId', 'username', 'profileImageUrl', 'bio', 'role', 'status',
+        'suspensionScope', 'suspendedFeatures', 'suspensionIndefinite',
+        'suspendedUntil', 'suspensionReason', 'email', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'userId', 'username', 'profileImageUrl', 'bio', 'role', 'status',
+        'suspensionScope', 'suspendedFeatures', 'suspensionIndefinite',
+        'suspendedUntil', 'suspensionReason', 'email', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.userId) &&
+      data.username is string && data.username.size() >= 1 && data.username.size() <= 40 &&
+      isValidOptionalUrl(data.profileImageUrl) &&
+      data.bio is string && data.bio.size() <= 500 &&
+      data.role in ['user', 'admin'] &&
+      data.status in ['active', 'suspended'] &&
+      data.suspensionScope in ['none', 'partial', 'all'] &&
+      data.suspendedFeatures is list &&
+      data.suspendedFeatures.size() <= 10 &&
+      data.suspendedFeatures.hasOnly(['post', 'like', 'favorite', 'report', 'profile']) &&
+      data.suspensionIndefinite is bool &&
+      data.suspendedUntil is timestamp &&
+      data.suspensionReason is string && data.suspensionReason.size() <= 500 &&
+      data.email is string && data.email.size() <= 254 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data) {
+      return data.keys().hasAll(['userId', 'username', 'profileImageUrl', 'bio', 'createdAt']) &&
+        data.keys().hasOnly(['userId', 'username', 'profileImageUrl', 'bio', 'createdAt']) &&
+        isValidId(data.userId) &&
+        data.username is string && data.username.size() >= 1 && data.username.size() <= 40 &&
+        isValidOptionalUrl(data.profileImageUrl) &&
+        data.bio is string && data.bio.size() <= 500 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll([
+        'postId', 'title', 'description', 'clawType', 'playType', 'difficulty',
+        'notes', 'authorId', 'authorName', 'coverImageUrl', 'status',
+        'rejectionReason', 'isAdminPost', 'likesCount', 'viewsCount',
+        'favoritesCount', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'postId', 'title', 'description', 'clawType', 'playType', 'difficulty',
+        'notes', 'authorId', 'authorName', 'coverImageUrl', 'status',
+        'rejectionReason', 'isAdminPost', 'likesCount', 'viewsCount',
+        'favoritesCount', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.postId) &&
+      data.status in ['draft', 'pending', 'approved', 'rejected'] &&
+      data.title is string && data.title.size() <= 120 &&
+      data.description is string && data.description.size() <= 5000 &&
+      data.clawType is string && data.clawType.size() <= 40 &&
+      data.playType is string && data.playType.size() <= 40 &&
+      (data.status == 'draft' || (
+        data.title.size() >= 1 &&
+        data.description.size() >= 1 &&
+        data.clawType.size() >= 1 &&
+        data.playType.size() >= 1
+      )) &&
+      data.difficulty in ['初級', '中級', '上級'] &&
+      data.notes is string && data.notes.size() <= 2000 &&
+      isValidId(data.authorId) &&
+      data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 40 &&
+      isValidCoverImageUrl(data.coverImageUrl) &&
+      data.rejectionReason is string && data.rejectionReason.size() <= 500 &&
+      data.isAdminPost is bool &&
+      data.likesCount is int && data.likesCount >= 0 &&
+      data.viewsCount is int && data.viewsCount >= 0 &&
+      data.favoritesCount is int && data.favoritesCount >= 0 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPostImage(data) {
+      return data.keys().hasAll(['imageId', 'postId', 'authorId', 'postStatus', 'imageUrl', 'displayOrder', 'createdAt']) &&
+        data.keys().hasOnly(['imageId', 'postId', 'authorId', 'postStatus', 'imageUrl', 'publicId', 'sourceUrl', 'displayOrder', 'createdAt']) &&
+        isValidId(data.imageId) &&
+        isValidId(data.postId) &&
+        isValidId(data.authorId) &&
+        data.postStatus in ['draft', 'pending', 'approved', 'rejected'] &&
+        isValidImageAssetUrl(data.imageUrl) &&
+        (!('publicId' in data) || (data.publicId is string && data.publicId.size() <= 300)) &&
+        (!('sourceUrl' in data) || isValidOptionalUrl(data.sourceUrl)) &&
+        data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 50 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPostVideo(data) {
+      return data.keys().hasAll(['videoId', 'postId', 'authorId', 'postStatus', 'videoUrl', 'displayOrder', 'createdAt']) &&
+        data.keys().hasOnly(['videoId', 'postId', 'authorId', 'postStatus', 'videoUrl', 'displayOrder', 'createdAt']) &&
+        isValidId(data.videoId) &&
+        isValidId(data.postId) &&
+        isValidId(data.authorId) &&
+        data.postStatus in ['draft', 'pending', 'approved', 'rejected'] &&
+        isValidRequiredHttpUrl(data.videoUrl) &&
+        data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 20 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['favoriteId', 'userId', 'postId', 'createdAt']) &&
+        data.keys().hasOnly(['favoriteId', 'userId', 'postId', 'createdAt']) &&
+        isValidId(data.favoriteId) &&
+        isValidId(data.userId) &&
+        isValidId(data.postId) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidLike(data) {
+      return data.keys().hasAll(['likeId', 'userId', 'postId', 'createdAt']) &&
+        data.keys().hasOnly(['likeId', 'userId', 'postId', 'createdAt']) &&
+        isValidId(data.likeId) &&
+        isValidId(data.userId) &&
+        isValidId(data.postId) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidRecommendation(data) {
+      return data.keys().hasAll(['recommendationId', 'postId', 'adminComment', 'displayOrder', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['recommendationId', 'postId', 'adminComment', 'displayOrder', 'isActive', 'createdAt', 'updatedAt']) &&
+        isValidId(data.recommendationId) &&
+        isValidId(data.postId) &&
+        data.adminComment is string && data.adminComment.size() <= 1000 &&
+        data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 1000 &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['reportId', 'postId', 'postTitle', 'reporterId', 'reason', 'details', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['reportId', 'postId', 'postTitle', 'reporterId', 'reason', 'details', 'status', 'createdAt']) &&
+        isValidId(data.reportId) &&
+        isValidId(data.postId) &&
+        data.postTitle is string && data.postTitle.size() >= 1 && data.postTitle.size() <= 120 &&
+        isValidId(data.reporterId) &&
+        data.reason in ['不適切な内容', '著作権侵害の疑い', '画像・動画の無断転載', '虚偽情報', 'その他'] &&
+        data.details is string && data.details.size() <= 1000 &&
+        data.status in ['pending', 'resolved', 'dismissed'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['notificationId', 'userId', 'type', 'title', 'message', 'postId', 'isRead', 'createdAt']) &&
+        data.keys().hasOnly(['notificationId', 'userId', 'type', 'title', 'message', 'postId', 'isRead', 'createdAt']) &&
+        isValidId(data.notificationId) &&
+        isValidId(data.userId) &&
+        data.type in ['post_approved', 'post_rejected', 'post_liked', 'admin_announcement'] &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1000 &&
+        data.postId is string && data.postId.size() <= 128 &&
+        data.isRead is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['categoryId', 'kind', 'name', 'displayOrder', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['categoryId', 'kind', 'name', 'displayOrder', 'isActive', 'createdAt']) &&
+        isValidId(data.categoryId) &&
+        data.kind in ['claw', 'play'] &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 40 &&
+        data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 500 &&
+        data.isActive is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidInquiry(data) {
+      return data.keys().hasAll(['inquiryId', 'userId', 'email', 'subject', 'message', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['inquiryId', 'userId', 'email', 'subject', 'message', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.inquiryId) &&
+        isValidId(data.userId) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 2000 &&
+        data.status in ['open', 'closed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInquiryMessage(data) {
+      return data.keys().hasAll(['messageId', 'inquiryId', 'inquiryOwnerId', 'senderId', 'senderRole', 'body', 'createdAt']) &&
+        data.keys().hasOnly(['messageId', 'inquiryId', 'inquiryOwnerId', 'senderId', 'senderRole', 'body', 'createdAt']) &&
+        isValidId(data.messageId) &&
+        isValidId(data.inquiryId) &&
+        isValidId(data.inquiryOwnerId) &&
+        isValidId(data.senderId) &&
+        data.senderRole in ['user', 'support'] &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 2000 &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Users (PII-isolated: owner or operator only)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidUserProfile(incoming()) &&
+        incoming().userId == userId &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().status == 'active' &&
+        incoming().suspensionScope == 'none' &&
+        incoming().suspendedFeatures.size() == 0 &&
+        incoming().suspensionIndefinite == false &&
+        incoming().suspensionReason == '' &&
+        (incoming().role == 'user' || (isBootstrappedAdmin() && incoming().role == 'admin'));
+      allow update: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidUserProfile(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (isOwner(userId) &&
+           isFeatureAllowed('profile') &&
+           incoming().role == existing().role &&
+           incoming().status == existing().status && (
+             (
+               'suspensionScope' in existing() &&
+               incoming().suspensionScope == existing().suspensionScope &&
+               incoming().suspendedFeatures == existing().suspendedFeatures &&
+               incoming().suspensionIndefinite == existing().suspensionIndefinite &&
+               incoming().suspendedUntil == existing().suspendedUntil &&
+               incoming().suspensionReason == existing().suspensionReason &&
+               incoming().diff(existing()).affectedKeys().hasOnly(['username', 'profileImageUrl', 'bio', 'email', 'updatedAt'])
+             ) || (
+               !('suspensionScope' in existing()) &&
+               incoming().suspensionScope == 'none' &&
+               incoming().suspendedFeatures.size() == 0 &&
+               incoming().suspensionIndefinite == false &&
+               incoming().suspensionReason == '' &&
+               incoming().diff(existing()).affectedKeys().hasOnly([
+                 'username', 'profileImageUrl', 'bio', 'email', 'updatedAt',
+                 'suspensionScope', 'suspendedFeatures', 'suspensionIndefinite',
+                 'suspendedUntil', 'suspensionReason'
+               ])
+             )
+           ))
+        );
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    // 2. Public Profiles (Non-PII display data)
+    match /publicProfiles/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidPublicProfile(incoming()) &&
+        incoming().userId == userId &&
+        incoming().userId == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(userId) &&
+        isVerifiedUser() &&
+        isValidPublicProfile(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        ((isOwner(userId) && isFeatureAllowed('profile')) || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['username', 'profileImageUrl', 'bio']);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+    }
+
+    // 3. Posts (Setting Manuals with Moderation)
+    match /posts/{postId} {
+      allow get: if isValidId(postId) && (
+        existing().status == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if existing().status == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin();
+      allow create: if isValidId(postId) &&
+        isFeatureAllowed('post') &&
+        isValidPost(incoming()) &&
+        incoming().postId == postId &&
+        incoming().authorId == request.auth.uid &&
+        incoming().likesCount == 0 &&
+        incoming().viewsCount == 0 &&
+        incoming().favoritesCount == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          (isAdmin() && incoming().status in ['draft', 'pending', 'approved']) ||
+          (incoming().status in ['draft', 'approved'] && incoming().isAdminPost == false && incoming().rejectionReason == '')
+        );
+      allow update: if isValidId(postId) &&
+        isVerifiedUser() &&
+        isValidPost(incoming()) &&
+        incoming().postId == existing().postId &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt && (
+          // Admin full moderation & edit override
+          (isAdmin() && incoming().updatedAt == request.time) ||
+          // Author edits own draft or published post -> stays draft or becomes/stays approved, preserves counters
+          (isFeatureAllowed('post') &&
+           existing().authorId == request.auth.uid &&
+           existing().status != 'rejected' &&
+           (incoming().status == 'approved' || (existing().status == 'draft' && incoming().status == 'draft')) &&
+           incoming().isAdminPost == existing().isAdminPost &&
+           incoming().rejectionReason == '' &&
+           incoming().likesCount == existing().likesCount &&
+           incoming().viewsCount == existing().viewsCount &&
+           incoming().favoritesCount == existing().favoritesCount &&
+           incoming().updatedAt == request.time &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'title', 'description', 'clawType', 'playType', 'difficulty',
+             'notes', 'authorName', 'coverImageUrl', 'status', 'rejectionReason', 'updatedAt'
+           ])) ||
+          // Atomic Like (+1)
+          (isFeatureAllowed('like') &&
+           existing().status == 'approved' &&
+           incoming().likesCount == existing().likesCount + 1 &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
+           !exists(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + postId)) &&
+           existsAfter(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + postId))) ||
+          // Atomic Unlike (-1)
+          (isFeatureAllowed('like') &&
+           existing().status == 'approved' &&
+           existing().likesCount > 0 &&
+           incoming().likesCount == existing().likesCount - 1 &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
+           exists(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + postId)) &&
+           !existsAfter(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + postId))) ||
+          // Atomic Favorite (+1)
+          (isFeatureAllowed('favorite') &&
+           existing().status == 'approved' &&
+           incoming().favoritesCount == existing().favoritesCount + 1 &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['favoritesCount']) &&
+           !exists(/databases/$(database)/documents/favorites/$(request.auth.uid + '_' + postId)) &&
+           existsAfter(/databases/$(database)/documents/favorites/$(request.auth.uid + '_' + postId))) ||
+          // Atomic Unfavorite (-1)
+          (isFeatureAllowed('favorite') &&
+           existing().status == 'approved' &&
+           existing().favoritesCount > 0 &&
+           incoming().favoritesCount == existing().favoritesCount - 1 &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['favoritesCount']) &&
+           exists(/databases/$(database)/documents/favorites/$(request.auth.uid + '_' + postId)) &&
+           !existsAfter(/databases/$(database)/documents/favorites/$(request.auth.uid + '_' + postId))) ||
+          // View increment (+1)
+          (existing().status == 'approved' &&
+           incoming().viewsCount == existing().viewsCount + 1 &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount']))
+        );
+      allow delete: if isValidId(postId) && (
+        (isFeatureAllowed('post') && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+    }
+
+    // 4. PostImages
+    match /postImages/{imageId} {
+      allow get: if isValidId(imageId) && (
+        existing().postStatus == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if existing().postStatus == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin();
+      allow create: if isValidId(imageId) &&
+        isFeatureAllowed('post') &&
+        isValidPostImage(incoming()) &&
+        incoming().imageId == imageId &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        'publicId' in incoming() &&
+        incoming().publicId is string &&
+        (isAdmin() || (incoming().publicId.size() >= 1 && incoming().imageUrl.matches('^https://res\\.cloudinary\\.com/.*'))) &&
+        getAfter(/databases/$(database)/documents/posts/$(incoming().postId)).data.authorId == request.auth.uid &&
+        (isAdmin() || incoming().postStatus in ['draft', 'approved']);
+      allow update: if isValidId(imageId) &&
+        isVerifiedUser() &&
+        isValidPostImage(incoming()) &&
+        incoming().imageId == existing().imageId &&
+        incoming().postId == existing().postId &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (isFeatureAllowed('post') &&
+           existing().authorId == request.auth.uid &&
+           incoming().postStatus in ['draft', 'approved'] &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'publicId', 'sourceUrl', 'displayOrder', 'postStatus']))
+        );
+      allow delete: if isValidId(imageId) && (
+        (isFeatureAllowed('post') && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+    }
+
+    // 5. PostVideos
+    match /postVideos/{videoId} {
+      allow get: if isValidId(videoId) && (
+        existing().postStatus == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if existing().postStatus == 'approved' ||
+        (isSignedIn() && existing().authorId == request.auth.uid) ||
+        isAdmin();
+      allow create: if isValidId(videoId) &&
+        isFeatureAllowed('post') &&
+        isValidPostVideo(incoming()) &&
+        incoming().videoId == videoId &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        getAfter(/databases/$(database)/documents/posts/$(incoming().postId)).data.authorId == request.auth.uid &&
+        (isAdmin() || incoming().postStatus in ['draft', 'approved']);
+      allow update: if isValidId(videoId) &&
+        isVerifiedUser() &&
+        isValidPostVideo(incoming()) &&
+        incoming().videoId == existing().videoId &&
+        incoming().postId == existing().postId &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (isFeatureAllowed('post') &&
+           existing().authorId == request.auth.uid &&
+           incoming().postStatus in ['draft', 'approved'] &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['videoUrl', 'displayOrder', 'postStatus']))
+        );
+      allow delete: if isValidId(videoId) && (
+        (isFeatureAllowed('post') && existing().authorId == request.auth.uid) ||
+        isAdmin()
+      );
+    }
+
+    // 6. Favorites (Strictly Private Per User)
+    match /favorites/{favoriteId} {
+      allow get: if isValidId(favoriteId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(favoriteId) &&
+        isFeatureAllowed('favorite') &&
+        isValidFavorite(incoming()) &&
+        incoming().favoriteId == favoriteId &&
+        incoming().userId == request.auth.uid &&
+        favoriteId == request.auth.uid + '_' + incoming().postId &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/posts/$(incoming().postId)) &&
+        get(/databases/$(database)/documents/posts/$(incoming().postId)).data.status == 'approved' &&
+        getAfter(/databases/$(database)/documents/posts/$(incoming().postId)).data.favoritesCount ==
+          get(/databases/$(database)/documents/posts/$(incoming().postId)).data.favoritesCount + 1;
+      allow update: if false;
+      allow delete: if isValidId(favoriteId) &&
+        isFeatureAllowed('favorite') &&
+        existing().userId == request.auth.uid;
+    }
+
+    // 7. Likes (Deterministic ID prevents duplicates)
+    match /likes/{likeId} {
+      allow get: if isValidId(likeId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(likeId) &&
+        isFeatureAllowed('like') &&
+        isValidLike(incoming()) &&
+        incoming().likeId == likeId &&
+        incoming().userId == request.auth.uid &&
+        likeId == request.auth.uid + '_' + incoming().postId &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/posts/$(incoming().postId)) &&
+        get(/databases/$(database)/documents/posts/$(incoming().postId)).data.status == 'approved' &&
+        getAfter(/databases/$(database)/documents/posts/$(incoming().postId)).data.likesCount ==
+          get(/databases/$(database)/documents/posts/$(incoming().postId)).data.likesCount + 1;
+      allow update: if false;
+      allow delete: if isValidId(likeId) &&
+        isFeatureAllowed('like') &&
+        existing().userId == request.auth.uid;
+    }
+
+    // 8. Recommendations (Admin-Curated Only)
+    match /recommendations/{recommendationId} {
+      allow get: if isValidId(recommendationId) && (existing().isActive == true || isAdmin());
+      allow list: if existing().isActive == true || isAdmin();
+      allow create: if isValidId(recommendationId) &&
+        isAdmin() &&
+        isValidRecommendation(incoming()) &&
+        incoming().recommendationId == recommendationId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/posts/$(incoming().postId));
+      allow update: if isValidId(recommendationId) &&
+        isAdmin() &&
+        isValidRecommendation(incoming()) &&
+        incoming().recommendationId == existing().recommendationId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(recommendationId) && isAdmin();
+    }
+
+    // 9. Reports (Moderation Flags)
+    match /reports/{reportId} {
+      allow get: if isValidId(reportId) && (isAdmin() || (isSignedIn() && existing().reporterId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().reporterId == request.auth.uid);
+      allow create: if isValidId(reportId) &&
+        isFeatureAllowed('report') &&
+        isValidReport(incoming()) &&
+        incoming().reportId == reportId &&
+        incoming().reporterId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/posts/$(incoming().postId));
+      allow update: if isValidId(reportId) &&
+        isAdmin() &&
+        isValidReport(incoming()) &&
+        incoming().reportId == existing().reportId &&
+        incoming().postId == existing().postId &&
+        incoming().reporterId == existing().reporterId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isValidId(reportId) && isAdmin();
+    }
+
+    // 10. Notifications (Per-User Inbox)
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isValidId(notificationId) &&
+        isVerifiedUser() &&
+        isValidNotification(incoming()) &&
+        incoming().notificationId == notificationId &&
+        incoming().isRead == false &&
+        incoming().createdAt == request.time && (
+          isAdmin() ||
+          (incoming().type == 'post_liked' &&
+           incoming().postId != '' &&
+           exists(/databases/$(database)/documents/posts/$(incoming().postId)) &&
+           get(/databases/$(database)/documents/posts/$(incoming().postId)).data.authorId == incoming().userId &&
+           !exists(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + incoming().postId)) &&
+           existsAfter(/databases/$(database)/documents/likes/$(request.auth.uid + '_' + incoming().postId)))
+        );
+      allow update: if isValidId(notificationId) &&
+        isVerifiedUser() &&
+        isValidNotification(incoming()) &&
+        incoming().notificationId == existing().notificationId &&
+        incoming().userId == existing().userId &&
+        incoming().type == existing().type &&
+        incoming().title == existing().title &&
+        incoming().message == existing().message &&
+        incoming().postId == existing().postId &&
+        incoming().createdAt == existing().createdAt &&
+        existing().userId == request.auth.uid &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isValidId(notificationId) && (
+        (isVerifiedUser() && existing().userId == request.auth.uid) ||
+        isAdmin()
+      );
+    }
+
+    // 11. Categories (Claw & Play Types Managed by Admin)
+    match /categories/{categoryId} {
+      allow get: if isValidId(categoryId) && (existing().isActive == true || isAdmin());
+      allow list: if existing().isActive == true || isAdmin();
+      allow create: if isValidId(categoryId) &&
+        isAdmin() &&
+        isValidCategory(incoming()) &&
+        incoming().categoryId == categoryId &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(categoryId) &&
+        isAdmin() &&
+        isValidCategory(incoming()) &&
+        incoming().categoryId == existing().categoryId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['kind', 'name', 'displayOrder', 'isActive']);
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // 12. Inquiries (Support Chat Threads - accessible even when account is suspended)
+    match /inquiries/{inquiryId} {
+      allow get: if isValidId(inquiryId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow create: if isValidId(inquiryId) &&
+        isVerifiedUser() &&
+        isValidInquiry(incoming()) &&
+        incoming().inquiryId == inquiryId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'open' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(inquiryId) &&
+        isVerifiedUser() &&
+        isValidInquiry(incoming()) &&
+        incoming().inquiryId == existing().inquiryId &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt']))
+        );
+      allow delete: if isValidId(inquiryId) && isAdmin();
+    }
+
+    // 13. InquiryMessages (Chat Messages inside Support Threads)
+    match /inquiryMessages/{messageId} {
+      allow get: if isValidId(messageId) && (isAdmin() || (isSignedIn() && existing().inquiryOwnerId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().inquiryOwnerId == request.auth.uid);
+      allow create: if isValidId(messageId) &&
+        isVerifiedUser() &&
+        isValidInquiryMessage(incoming()) &&
+        incoming().messageId == messageId &&
+        incoming().senderId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/inquiries/$(incoming().inquiryId)) &&
+        get(/databases/$(database)/documents/inquiries/$(incoming().inquiryId)).data.userId == incoming().inquiryOwnerId && (
+          (incoming().senderRole == 'user' && incoming().inquiryOwnerId == request.auth.uid) ||
+          (incoming().senderRole == 'support' && isAdmin())
+        );
+      allow update: if false;
+      allow delete: if isValidId(messageId) && (isAdmin() || (isVerifiedUser() && existing().inquiryOwnerId == request.auth.uid));
+    }
+  }
+}

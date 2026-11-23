@@ -1,0 +1,6 @@
+{
+  "name": "CRANE MANUAL（クレーンマニュアル）",
+  "description": "クレーンゲームの設定方法、景品の置き方、攻略につながる設定ノウハウを投稿・検索・共有できる専門Webアプリ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

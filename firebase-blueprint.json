@@ -1,0 +1,301 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account record including role and status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "profileImageUrl": { "type": "string", "maxLength": 1000 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "suspensionScope": { "type": "string", "enum": ["none", "partial", "all"] },
+        "suspendedFeatures": { "type": "array" },
+        "suspensionIndefinite": { "type": "boolean" },
+        "suspendedUntil": { "type": "string", "format": "date-time" },
+        "suspensionReason": { "type": "string", "maxLength": 500 },
+        "email": { "type": "string", "maxLength": 254 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "username",
+        "profileImageUrl",
+        "bio",
+        "role",
+        "status",
+        "suspensionScope",
+        "suspendedFeatures",
+        "suspensionIndefinite",
+        "suspendedUntil",
+        "suspensionReason",
+        "email",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Publicly visible non-PII user profile summary.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "username": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "profileImageUrl": { "type": "string", "maxLength": 1000 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "profileImageUrl", "bio", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Crane game setting manual submitted by a user or administrator.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "description": { "type": "string", "minLength": 0, "maxLength": 5000 },
+        "clawType": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "playType": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "difficulty": { "type": "string", "enum": ["初級", "中級", "上級"] },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "coverImageUrl": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["draft", "pending", "approved", "rejected"] },
+        "rejectionReason": { "type": "string", "maxLength": 500 },
+        "isAdminPost": { "type": "boolean" },
+        "likesCount": { "type": "integer" },
+        "viewsCount": { "type": "integer" },
+        "favoritesCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "postId",
+        "title",
+        "description",
+        "clawType",
+        "playType",
+        "difficulty",
+        "notes",
+        "authorId",
+        "authorName",
+        "coverImageUrl",
+        "status",
+        "rejectionReason",
+        "isAdminPost",
+        "likesCount",
+        "viewsCount",
+        "favoritesCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PostImage": {
+      "title": "PostImage",
+      "description": "Cloudinary image metadata linked to a post.",
+      "type": "object",
+      "properties": {
+        "imageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postStatus": { "type": "string", "enum": ["draft", "pending", "approved", "rejected"] },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "publicId": { "type": "string", "maxLength": 300 },
+        "sourceUrl": { "type": "string", "maxLength": 1000 },
+        "displayOrder": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["imageId", "postId", "authorId", "postStatus", "imageUrl", "publicId", "displayOrder", "createdAt"]
+    },
+    "PostVideo": {
+      "title": "PostVideo",
+      "description": "Reference video URL associated with a post.",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postStatus": { "type": "string", "enum": ["draft", "pending", "approved", "rejected"] },
+        "videoUrl": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "displayOrder": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoId", "postId", "authorId", "postStatus", "videoUrl", "displayOrder", "createdAt"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "User-private favorite bookmark for a post.",
+      "type": "object",
+      "properties": {
+        "favoriteId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["favoriteId", "userId", "postId", "createdAt"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "User like record for a post.",
+      "type": "object",
+      "properties": {
+        "likeId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["likeId", "userId", "postId", "createdAt"]
+    },
+    "Recommendation": {
+      "title": "Recommendation",
+      "description": "Admin-curated recommended setting entry.",
+      "type": "object",
+      "properties": {
+        "recommendationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "adminComment": { "type": "string", "maxLength": 1000 },
+        "displayOrder": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recommendationId", "postId", "adminComment", "displayOrder", "isActive", "createdAt", "updatedAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "User report flagging an inappropriate post.",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "postTitle": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "reporterId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reason": { "type": "string", "enum": ["不適切な内容", "著作権侵害の疑い", "画像・動画の無断転載", "虚偽情報", "その他"] },
+        "details": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reportId", "postId", "postTitle", "reporterId", "reason", "details", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for approvals, rejections, likes, or admin announcements.",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["post_approved", "post_rejected", "post_liked", "admin_announcement"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["notificationId", "userId", "type", "title", "message", "postId", "isRead", "createdAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Admin-managed claw type or play placement type option.",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "kind": { "type": "string", "enum": ["claw", "play"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "displayOrder": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["categoryId", "kind", "name", "displayOrder", "isActive", "createdAt"]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "Support chat thread initiated by a user.",
+      "type": "object",
+      "properties": {
+        "inquiryId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 1, "maxLength": 254 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["inquiryId", "userId", "email", "subject", "message", "status", "createdAt", "updatedAt"]
+    },
+    "InquiryMessage": {
+      "title": "InquiryMessage",
+      "description": "Chat message inside a support inquiry thread.",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "inquiryId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "inquiryOwnerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderRole": { "type": "string", "enum": ["user", "support"] },
+        "body": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["messageId", "inquiryId", "inquiryOwnerId", "senderId", "senderRole", "body", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-only and operator-only user account records with RBAC role, suspension scope, and PII email."
+    },
+    "/publicProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Publicly readable non-PII profile information."
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Crane game setting manuals."
+    },
+    "/postImages/{imageId}": {
+      "schema": { "$ref": "#/entities/PostImage" },
+      "description": "External image URLs and required source site URLs linked to posts."
+    },
+    "/postVideos/{videoId}": {
+      "schema": { "$ref": "#/entities/PostVideo" },
+      "description": "Reference video URLs linked to posts."
+    },
+    "/favorites/{favoriteId}": {
+      "schema": { "$ref": "#/entities/Favorite" },
+      "description": "User-private favorite bookmarks keyed as userId_postId."
+    },
+    "/likes/{likeId}": {
+      "schema": { "$ref": "#/entities/Like" },
+      "description": "User likes keyed as userId_postId."
+    },
+    "/recommendations/{recommendationId}": {
+      "schema": { "$ref": "#/entities/Recommendation" },
+      "description": "Curated featured setting recommendations."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/Report" },
+      "description": "User moderation reports for posts."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Per-user notifications."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Claw and play type categories."
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/Inquiry" },
+      "description": "User support chat threads."
+    },
+    "/inquiryMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/InquiryMessage" },
+      "description": "Chat messages inside support inquiry threads."
+    }
+  }
+}
